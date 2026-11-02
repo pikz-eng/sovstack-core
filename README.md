@@ -8,66 +8,67 @@ This repository represents **Phase 1** of the sovStack ecosystem, establishing t
 
 ---
 
- Architecture Overview
 ```mermaid
 flowchart TD
-    subgraph ManagementStation [" 🛠️ Administrator Station (Out-of-Band) "]
-        Admin["SysAdmin / Operator"]
-        IaC["IaC Tools: Ansible Playbooks & Terraform"]
-        Admin --> IaC
-    end
-
-    subgraph Boundary [" 🌐 Network Isolation & Access Boundary "]
-        WG["WireGuard VPN Interface (wg0)<br>Encrypted Transport / Port 51820 UDP"]
-        NFT["nftables Firewall Engine<br>• Ingress: Only wg0 & LAN<br>• Egress: Strict DROP (Zero Internet Air-Gap)"]
-    end
-
-    subgraph HostOS [" 🛡️ Host Node: AlmaLinux 9 Minimal "]
-        Kernel["Linux Kernel Hardened (sysctl tuning)"]
-        SELinux["SELinux Enforcing Mode (k3s-selinux policies)"]
-        LocalStorage["Host NVMe/SSD Storage<br>(/var/lib/rancher/k3s/storage)"]
+    subgraph ManagementPlane [" 🛠️ OPERATOR / SYSADMIN (Private Network) "]
+        Admin["Administrator Workstation"]
+        Terraform["Terraform (Proxmox/KVM Provider)"]
+        Ansible["Ansible Engine"]
         
-        Kernel --- SELinux
+        Admin --> Terraform
+        Terraform -->|Export Host Details| Inventory["ansible/inventory.ini"]
+        Inventory -.-> Ansible
     end
 
-    subgraph K3sCluster [" ☸️ Single-Node K3s Container Runtime (containerd) "]
-        Traefik["Traefik Reverse Proxy<br>(Internal TLS / Ingress Controller)"]
+    subgraph TransportLayer [" 🔐 ACCESS & ISOLATION LAYER "]
+        WG_Tunnel["Encrypted WireGuard VPN (wg0)<br>Port: 51820/UDP | Auth: ED25519 Keys"]
+        LAN_Net["Local Enterprise Network (LAN)<br>Subnet: 192.168.10.0/24 (No Internet Gateway)"]
+    end
+
+    subgraph OnPremNode [" 🖥️ ON-PREMISE NODE: sovstack-core (AlmaLinux 9) "]
         
-        subgraph SecNamespace [" Namespace: vault-system "]
-            Vault["HashiCorp Vault<br>(StatefulSet / In-Memory tmpfs)"]
-            VaultRaft[("Vault Integrated Storage<br>(Raft Engine on Local Disk)")]
-            VaultPKI["Vault Internal PKI CA<br>(Automated Internal TLS Issuance)"]
+        subgraph NFTablesEngine [" 🛡️ nftables Firewall Enforcement "]
             
-            Vault --- VaultRaft
-            Vault --- VaultPKI
+            subgraph IngressRules [" INGRESS (Allowed Rules) "]
+                In_WG["Port 51820/UDP: WireGuard Ingress (Admin)"]
+                In_SSH["Port 22/TCP: SSH Console (STRICT wg0 interface only)"]
+                In_K8s["Port 6443/TCP: K3s API (STRICT wg0 & 127.0.0.1 only)"]
+                In_Web["Ports 80, 443/TCP: Internal Web/Traefik (LAN only)"]
+            end
+
+            subgraph EgressRules [" EGRESS (Air-Gap Policy) "]
+                Out_Drop["⛔ DEFAULT DROP: 0.0.0.0/0 (All Internet/WAN blocked)"]
+                Out_Local["ALLOW: Established/Related & Internal LAN traffic"]
+            end
         end
 
-        subgraph WorkloadsNamespace [" Namespace: core-workloads "]
-            CoreApp["Baseline Edge Workloads"]
-            Injector["Vault Sidecar Agent<br>(Injects secrets via memory tmpfs)"]
-            CSI["K3s Local-Path Provisioner (CSI)"]
+        subgraph VMResources [" 📦 Compute & Storage Resources "]
+            NodeOS["OS: AlmaLinux 9 Minimal (SELinux Enforcing)"]
+            NodeSpecs["Compute: 4 vCPU | 8GB-16GB RAM"]
+            NodeDisk["Storage: Local NVMe/SSD (/var/lib/rancher/k3s)"]
+            K3sEngine["K3s Single-Node (containerd)"]
             
-            CoreApp --- Injector
-            CoreApp --> CSI
+            NodeOS --- NodeSpecs
+            NodeSpecs --- NodeDisk
+            NodeDisk --- K3sEngine
         end
-
-        Traefik -->|Internal Routing| CoreApp
-        Traefik -->|Management API| Vault
-        Injector -.->|Dynamic Secrets & MTLS| Vault
-        CSI -->|Mount Volume| LocalStorage
     end
 
-    %% Network flows
-    IaC ==>|1. Encrypted Peer Handshake| WG
-    WG -->|2. Internal Forwarding| NFT
-    NFT -->|3. Filtered Ingress| Traefik
+    %% Connections
+    Ansible ==>|Run Hardening Playbooks| WG_Tunnel
+    WG_Tunnel ==> In_WG
+    In_WG --> In_SSH
+    In_WG --> In_K8s
+    LAN_Net ==> In_Web
+    
+    IngressRules --> K3sEngine
 
-    %% Styling for crisp visual hierarchy
-    style ManagementStation fill:#f8f9fa,stroke:#6c757d,stroke-width:2px
-    style Boundary fill:#fff3cd,stroke:#ffc107,stroke-width:2px
-    style HostOS fill:#e2e3e5,stroke:#495057,stroke-width:2px
-    style K3sCluster fill:#e8f4f8,stroke:#0d6efd,stroke-width:2px
-    style SecNamespace fill:#f3e8fd,stroke:#6f42c1,stroke-width:2px
-    style WorkloadsNamespace fill:#ffffff,stroke:#198754,stroke-width:2px
-    style NFT fill:#ffe5e5,stroke:#dc3545,stroke-width:2px
+    %% Styling
+    style ManagementPlane fill:#f8f9fa,stroke:#6c757d,stroke-width:2px
+    style TransportLayer fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+    style OnPremNode fill:#e8f4f8,stroke:#0d6efd,stroke-width:2px
+    style NFTablesEngine fill:#fdfdfe,stroke:#495057,stroke-width:1px
+    style IngressRules fill:#e8f8f5,stroke:#28a745,stroke-width:2px
+    style EgressRules fill:#fdedec,stroke:#dc3545,stroke-width:2px
+    style VMResources fill:#ffffff,stroke:#6f42c1,stroke-width:2px
 ```
