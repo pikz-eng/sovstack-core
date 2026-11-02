@@ -10,65 +10,82 @@ This repository represents **Phase 1** of the sovStack ecosystem, establishing t
 
 ```mermaid
 flowchart TD
-    subgraph ManagementPlane [" 🛠️ OPERATOR / SYSADMIN (Private Network) "]
-        Admin["Administrator Workstation"]
-        Terraform["Terraform (Proxmox/KVM Provider)"]
-        Ansible["Ansible Engine"]
+    %% ==========================================
+    %% TOP ZONE: MANAGEMENT & CONTROL PLANE
+    %% ==========================================
+    subgraph ManagementPlane ["MANAGEMENT & PROVISIONING PLANE (Out-of-Band)"]
+        AdminStation["SysAdmin / Operator Workstation"]
+        TerraformEngine["Terraform Engine<br>(KVM/Proxmox Provisioner)"]
+        AnsibleEngine["Ansible Automation Engine<br>(OS Hardening & Bootstrap)"]
         
-        Admin --> Terraform
-        Terraform -->|Export Host Details| Inventory["ansible/inventory.ini"]
-        Inventory -.-> Ansible
+        AdminStation --> TerraformEngine
+        AdminStation --> AnsibleEngine
     end
 
-    subgraph TransportLayer [" 🔐 ACCESS & ISOLATION LAYER "]
-        WG_Tunnel["Encrypted WireGuard VPN (wg0)<br>Port: 51820/UDP | Auth: ED25519 Keys"]
-        LAN_Net["Local Enterprise Network (LAN)<br>Subnet: 192.168.10.0/24 (No Internet Gateway)"]
+    %% ==========================================
+    %% DEMARCATION BOUNDARY: AIR-GAP PERIMETER
+    %% ==========================================
+    subgraph PerimeterBoundary ["------------------ AIR-GAP & ZERO-EGRESS SECURITY BOUNDARY ------------------"]
+        WGGateway["WireGuard VPN Gateway (wg0)<br>Port 51820/UDP • Key-Auth Only"]
+        NFTables["nftables Policy Engine<br>• Ingress: Strict wg0 + LAN<br>• Egress: DEFAULT DROP (0.0.0.0/0)"]
     end
 
-    subgraph OnPremNode [" 🖥️ ON-PREMISE NODE: sovstack-core (AlmaLinux 9) "]
+    %% ==========================================
+    %% BOTTOM ZONE: SOVEREIGN ON-PREMISES APPLIANCE
+    %% ==========================================
+    subgraph ApplianceNode ["SOVEREIGN APPLIANCE NODE (AlmaLinux 9 Minimal • SELinux Enforcing)"]
         
-        subgraph NFTablesEngine [" 🛡️ nftables Firewall Enforcement "]
-            
-            subgraph IngressRules [" INGRESS (Allowed Rules) "]
-                In_WG["Port 51820/UDP: WireGuard Ingress (Admin)"]
-                In_SSH["Port 22/TCP: SSH Console (STRICT wg0 interface only)"]
-                In_K8s["Port 6443/TCP: K3s API (STRICT wg0 & 127.0.0.1 only)"]
-                In_Web["Ports 80, 443/TCP: Internal Web/Traefik (LAN only)"]
+        subgraph OrchestrationLayer ["K3s Lightweight Container Engine (containerd)"]
+            TraefikIngress["Traefik Ingress Router<br>(Internal mTLS Endpoint)"]
+
+            subgraph SecurityOrchestrator ["Security & Secrets Management"]
+                VaultServer[("HashiCorp Vault<br>(Raft Consensus Engine)")]
+                VaultPKI["Vault Internal PKI<br>(Zero-Internet TLS CA)"]
+                VaultServer --- VaultPKI
             end
 
-            subgraph EgressRules [" EGRESS (Air-Gap Policy) "]
-                Out_Drop["⛔ DEFAULT DROP: 0.0.0.0/0 (All Internet/WAN blocked)"]
-                Out_Local["ALLOW: Established/Related & Internal LAN traffic"]
+            subgraph ComputeWorkloads ["Compute & System Workloads"]
+                CoreWorkload["Sovereign Core Services"]
+                SidecarAgent["Vault Injector Agent<br>(tmpfs in-memory delivery)"]
+                CoreWorkload --- SidecarAgent
             end
+            
+            TraefikIngress -->|Authenticated Route| CoreWorkload
+            SidecarAgent -.->|Fetch Ephemeral Secrets| VaultServer
         end
 
-        subgraph VMResources [" 📦 Compute & Storage Resources "]
-            NodeOS["OS: AlmaLinux 9 Minimal (SELinux Enforcing)"]
-            NodeSpecs["Compute: 4 vCPU | 8GB-16GB RAM"]
-            NodeDisk["Storage: Local NVMe/SSD (/var/lib/rancher/k3s)"]
-            K3sEngine["K3s Single-Node (containerd)"]
-            
-            NodeOS --- NodeSpecs
-            NodeSpecs --- NodeDisk
-            NodeDisk --- K3sEngine
+        subgraph StorageLayer ["Dedicated Host Storage Architecture"]
+            LocalCSI["K3s Local-Path CSI Driver"]
+            NVMeArray[("High-Performance Local NVMe / SSD<br>[/var/lib/rancher/k3s/storage]")]
+            LocalCSI --> NVMeArray
         end
+
+        ComputeWorkloads -->|Persistent Mount| LocalCSI
     end
 
-    %% Connections
-    Ansible ==>|Run Hardening Playbooks| WG_Tunnel
-    WG_Tunnel ==> In_WG
-    In_WG --> In_SSH
-    In_WG --> In_K8s
-    LAN_Net ==> In_Web
-    
-    IngressRules --> K3sEngine
+    %% Inter-plane connections
+    TerraformEngine ==>|1. Provision VM/Node| ApplianceNode
+    AnsibleEngine ==>|2. Configure Hardening via VPN| WGGateway
+    WGGateway -->|3. Decrypted Internal Traffic| NFTables
+    NFTables -->|4. Authorized Internal Ingress| TraefikIngress
 
-    %% Styling
-    style ManagementPlane fill:#f8f9fa,stroke:#6c757d,stroke-width:2px
-    style TransportLayer fill:#fff3cd,stroke:#ffc107,stroke-width:2px
-    style OnPremNode fill:#e8f4f8,stroke:#0d6efd,stroke-width:2px
-    style NFTablesEngine fill:#fdfdfe,stroke:#495057,stroke-width:1px
-    style IngressRules fill:#e8f8f5,stroke:#28a745,stroke-width:2px
-    style EgressRules fill:#fdedec,stroke:#dc3545,stroke-width:2px
-    style VMResources fill:#ffffff,stroke:#6f42c1,stroke-width:2px
+    %% ==========================================
+    %% ENTERPRISE COLOR PALETTE (HPE / GreenLake style)
+    %% ==========================================
+    style ManagementPlane fill:#f4fbf9,stroke:#00a982,stroke-width:2px,stroke-dasharray: 5 5
+    style AdminStation fill:#ffffff,stroke:#00a982,stroke-width:2px
+    style TerraformEngine fill:#ffffff,stroke:#00a982,stroke-width:2px
+    style AnsibleEngine fill:#ffffff,stroke:#00a982,stroke-width:2px
+
+    style PerimeterBoundary fill:#fff9f0,stroke:#e67e22,stroke-width:2px
+    style WGGateway fill:#ffffff,stroke:#e67e22,stroke-width:2px
+    style NFTables fill:#ffeef0,stroke:#d9534f,stroke-width:2px
+
+    style ApplianceNode fill:#f0f7fc,stroke:#0070ba,stroke-width:2px
+    style OrchestrationLayer fill:#ffffff,stroke:#0070ba,stroke-width:2px
+    style TraefikIngress fill:#e8f4f8,stroke:#0070ba,stroke-width:1px
+    style SecurityOrchestrator fill:#f9f4fc,stroke:#6f42c1,stroke-width:2px
+    style VaultServer fill:#ffffff,stroke:#6f42c1,stroke-width:2px
+    style ComputeWorkloads fill:#f4fbf9,stroke:#28a745,stroke-width:2px
+    style StorageLayer fill:#fdfefe,stroke:#495057,stroke-width:2px
 ```
