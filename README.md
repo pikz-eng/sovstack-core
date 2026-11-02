@@ -1,11 +1,44 @@
- sovstack-core
+# sovstack-core
 
-> Automated, reproducible, and sovereign edge infrastructure baseline designed for air-gapped environments.
+## Introduction
 
-`sovstack-core` provides a hardened, Infrastructure-as-Code (IaC) foundation for deploying and operating single-node appliances in environments where strict data isolation, zero outbound egress, and local governance are paramount (e.g., healthcare clinics, legal practices, and regulated SMEs).
+**sovstack-core** gives you a simple way to set up a secure, air-gapped computer server for your local network. 
 
-This repository represents **Phase 1** of the sovStack ecosystem, establishing the declarative OS hardening, container orchestration, secret management, and network containment layer.
+That means your data and applications stay 100% with you, completely isolated from the public internet and big tech cloud services.
 
+- Your system runs on your own hardware using **AlmaLinux OS**.
+- It automatically installs **K3s** to run container apps, **HashiCorp Vault** to keep your passwords and secrets safe, and an encrypted **VPN** to connect safely.
+- This code provides automated scripts (using Terraform and Ansible) to set up everything from scratch in a few minutes, without needing to manually configure each piece.
+
+---
+
+## Target Use Cases & Why It Matters
+
+Building and running modern software—especially **local AI models (LLMs), automation agents, and sensitive business applications**—usually requires a complex, error-prone setup of security certificates, firewalls, and orchestrators. 
+
+`sovstack-core` removes this barrier by providing a secure, turnkey foundation tailored for:
+* **AI & Edge Developers:** Deploy local AI workloads and services on-premise without risking data privacy or leaking data to public cloud providers.
+* **SMEs and Medical Clinics:** Run private, sovereign local infrastructure that complies with strict privacy and data-control requirements.
+* **System Administrators:** Spin up a fully automated, production-grade AlmaLinux + K3s + Vault environment with a single command.
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    Admin[Admin Node<br>Terraform & Ansible] -- Encrypted VPN Tunnel --> EdgeGW[Edge VPN Gateway]
+
+    subgraph "Air-Gapped Sovereign Environment"
+        EdgeGW --> K3s[K3s Kubernetes Cluster]
+        K3s --> Vault[(HashiCorp Vault<br>Secrets Management)]
+        K3s --> Core[Infra Workloads & AI Ready]
+    end
+
+    style Admin fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style EdgeGW fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style K3s fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style Vault fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
 ---
 
 ```mermaid
